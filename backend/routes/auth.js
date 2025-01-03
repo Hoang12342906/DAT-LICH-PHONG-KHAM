@@ -97,37 +97,44 @@ async function verifyGoogleToken(tokenId) {
 }
 
 // Hàm đăng nhập Google
-router.post('/google-login', async (req, res) => {
-  const { tokenId } = req.body; // Nhận tokenId từ request
+// In auth.js, modify the google-login route:
+router.get('/google-login', async (req, res) => {
+  const tokenId = req.query.tokenId;
 
   try {
-    // Xác thực token Google
     const googleUser = await verifyGoogleToken(tokenId);
-    
-    // Kiểm tra xem người dùng đã có trong hệ thống chưa
     let user = await db.promise().query('SELECT * FROM NguoiDung WHERE email = ?', [googleUser.email]);
 
     if (user[0].length === 0) {
-      // Nếu không tìm thấy người dùng, tạo mới người dùng
+      let tenTaiKhoan = googleUser.email.split('@')[0];
+      const existingUser = await db.promise().query('SELECT * FROM NguoiDung WHERE tenTaiKhoan = ?', [tenTaiKhoan]);
+      if (existingUser[0].length > 0) {
+        tenTaiKhoan += Math.floor(Math.random() * 1000);
+      }
+
       await db.promise().query(
-        'INSERT INTO NguoiDung (hoTen, email, idVaiTro) VALUES (?, ?, ?)',
-        [googleUser.name, googleUser.email, 'benhnhan']  // Tạo người dùng mặc định là 'benhnhan'
+        'INSERT INTO NguoiDung (hoTen, tenTaiKhoan, email, idVaiTro) VALUES (?, ?, ?, ?)',
+        [googleUser.name, tenTaiKhoan, googleUser.email, 'benhnhan']
       );
       user = await db.promise().query('SELECT * FROM NguoiDung WHERE email = ?', [googleUser.email]);
     }
 
-    // Tạo JWT token cho người dùng đã đăng nhập
     const token = jwt.sign(
-      { id: user[0][0].idNguoidung, tenTaiKhoan: user[0][0].tenTaiKhoan, email: googleUser.email, idVaiTro: user[0][0].idVaiTro },
-      'process.env.JWT_SECRET_KEY', // Mã hóa bằng secret key
+      { 
+        id: user[0][0].idNguoidung, 
+        tenTaiKhoan: user[0][0].tenTaiKhoan, 
+        email: googleUser.email, 
+        idVaiTro: user[0][0].idVaiTro 
+      },
+      secretKey,
       { expiresIn: '1h' }
     );
 
-    // Trả về token và thông tin người dùng
+    // Return JSON response instead of redirect
     return res.status(200).json({
       message: 'Đăng nhập thành công',
       token,
-      role: user[0][0].idVaiTro, // Trả về vai trò của người dùng
+      role: user[0][0].idVaiTro
     });
   } catch (error) {
     console.error(error);
@@ -136,5 +143,73 @@ router.post('/google-login', async (req, res) => {
 });
 
 
+// auth.js - Thêm route xử lý quên mật khẩu
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+
+// Cấu hình nodemailer
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD
+  }
+});
+
+// Route xử lý yêu cầu quên mật khẩu
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email không được để trống' });
+  }
+
+  try {
+    // Verify email exists
+    const [users] = await db.promise().query(
+      'SELECT * FROM NguoiDung WHERE email = ?', 
+      [email]
+    );
+    
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'Email không tồn tại trong hệ thống' });
+    }
+
+    const newPassword = crypto.randomBytes(8).toString('hex');
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await db.promise().query(
+      'UPDATE NguoiDung SET matKhau = ? WHERE email = ?',
+      [hashedPassword, email]
+    );
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Mật khẩu mới cho tài khoản của bạn',
+      html: `
+        <h2>Yêu cầu đặt lại mật khẩu</h2>
+        <p>Mật khẩu mới của bạn là: <strong>${newPassword}</strong></p>
+        <p>Vui lòng đăng nhập và đổi mật khẩu ngay sau khi nhận được email này.</p>
+      `
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      res.status(200).json({ message: 'Mật khẩu mới đã được gửi đến email của bạn' });
+    } catch (emailError) {
+      console.error('Email error:', emailError);
+      // Revert password change if email fails
+      await db.promise().query(
+        'UPDATE NguoiDung SET matKhau = ? WHERE email = ?',
+        [users[0].matKhau, email]
+      );
+      res.status(500).json({ message: 'Lỗi gửi email. Vui lòng thử lại sau.' });
+    }
+  } catch (error) {
+    console.error('Server error:', error);
+    res.status(500).json({ message: 'Lỗi server. Vui lòng thử lại sau.' });
+  }
+});
 
 module.exports = router;

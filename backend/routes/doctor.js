@@ -175,7 +175,7 @@ router.get('/staffs/list', verifyDoctor, async (req, res) => {
       [doctorId],
       (err, results) => {
         if (err) return res.status(500).json({ message: 'Lỗi khi truy vấn thông tin bác sĩ' });
-        if (results.length === 0) return res.status(404).json({ message: 'Không tìm thấy thông tin bác sĩ' });
+        if (results.length === 0) return res.status(404).json({ message: 'Hãy đăng ký phòng khám' });
 
         const idBacsi = results[0].idBacsi;
 
@@ -240,7 +240,7 @@ router.post('/staffs/add', verifyDoctor, async (req, res) => {
       [doctorId],
       (err, results) => {
         if (err) return res.status(500).json({ message: 'Lỗi khi truy vấn thông tin bác sĩ' });
-        if (results.length === 0) return res.status(404).json({ message: 'Không tìm thấy thông tin bác sĩ' });
+        if (results.length === 0) return res.status(404).json({ message: 'Hãy đăng ký phòng khám' });
 
         const idBacsi = results[0].idBacsi;
 
@@ -388,7 +388,7 @@ router.get('/schedule', verifyDoctor, (req, res) => {
     [doctorId],
     (err, results) => {
       if (err) return res.status(500).json({ message: 'Lỗi truy vấn thông tin bác sĩ' });
-      if (results.length === 0) return res.status(404).json({ message: 'Không tìm thấy thông tin bác sĩ' });
+      if (results.length === 0) return res.status(404).json({ message: 'Hãy đăng ký phòng khám' });
 
       const idBacsi = results[0].idBacsi;
 
@@ -450,7 +450,7 @@ router.get('/staff-schedules/pending', verifyDoctor, (req, res) => {
     [doctorId],
     (err, results) => {
       if (err) return res.status(500).json({ message: 'Lỗi truy vấn thông tin bác sĩ' });
-      if (results.length === 0) return res.status(404).json({ message: 'Không tìm thấy thông tin bác sĩ' });
+      if (results.length === 0) return res.status(404).json({ message: 'Hãy đăng ký phòng khám' });
 
       const idBacsi = results[0].idBacsi;
 
@@ -555,7 +555,7 @@ router.get('/appointments', verifyDoctor, (req, res) => {
     [doctorId],
     (err, results) => {
       if (err) return res.status(500).json({ message: 'Lỗi truy vấn thông tin bác sĩ' });
-      if (results.length === 0) return res.status(404).json({ message: 'Không tìm thấy thông tin bác sĩ' });
+      if (results.length === 0) return res.status(404).json({ message: 'Hãy đăng ký phòng khám' });
 
       const idBacsi = results[0].idBacsi;
 
