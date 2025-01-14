@@ -12,38 +12,39 @@ const secretKey = process.env.JWT_SECRET_KEY
 
 
 // Lấy thông tin cá nhân của bác sĩ (bao gồm hình ảnh)
-router.get('/profile', verifyDoctor, (req, res) => {
-    const userId = req.user.id;
-    db.query(
-        'SELECT hoTen, email, hinhAnh FROM NguoiDung WHERE idNguoidung = ?',
-        [userId],
-        (err, results) => {
-            if (err) return res.status(500).json({ message: 'Lỗi truy vấn' });
+router.get('/profile',verifyDoctor, (req, res) => {
+  const userId = req.user.id; 
+  db.query(
+    'SELECT hoTen, email, hinhAnh, gioiTinh, ngaySinh, diaChi, SDT,idVaiTro FROM NguoiDung WHERE idNguoidung = ?',
+    [userId],
+    (err, results) => {
+      if (err) {
+        console.error('Lỗi khi lấy thông tin:', err);
+        return res.status(500).json({ message: 'Lỗi truy vấn' });
+      }
 
-            if (results.length > 0) {
-                const user = results[0];
+      if (results.length > 0) {
+        const user = results[0];
 
-                if (user.hinhAnh) {
-                    const base64Image = user.hinhAnh.toString('base64');
-                    res.json({
-                        hoTen: user.hoTen,
-                        email: user.email,
-                        hinhAnh: `data:image/png;base64,${base64Image}`
-                    });
-                } else {
-                    res.json({
-                        hoTen: user.hoTen,
-                        email: user.email,
-                        hinhAnh: '/default-avatar.png'
-                    });
-                }
-            } else {
-                res.status(404).json({ message: 'Không tìm thấy người dùng' });
-            }
+        // Chuyển đổi hình ảnh từ Buffer sang Base64
+        if (user.hinhAnh) {
+          const base64Image = user.hinhAnh.toString('base64');
+          user.hinhAnh = `data:image/png;base64,${base64Image}`;
+        } else {
+          user.hinhAnh = './img/default_avatar.jpg';
         }
-    );
-});
 
+        // Chuyển đổi gioiTinh từ Buffer (kiểu BIT) sang số
+        user.gioiTinh = user.gioiTinh ? user.gioiTinh[0] : null;
+
+        console.log('Dữ liệu trả về:', user); // Log để kiểm tra
+        res.json(user);
+      } else {
+        res.status(404).json({ message: 'Không tìm thấy người dùng' });
+      }
+    }
+  );
+});
 
 // Kiểm tra trạng thái phòng khám hiện tại của bác sĩ
 const checkClinicStatus = (doctorId) => {
@@ -398,7 +399,7 @@ router.get('/schedule', verifyDoctor, (req, res) => {
          FROM LichTrinh lt
          LEFT JOIN ChiTietKhungGio ctkh ON lt.idLichtrinh = ctkh.idLichtrinh
          WHERE lt.idBacsi = ?
-         ORDER BY lt.ngay ASC, ctkh.gioKham ASC`,
+         ORDER BY lt.ngay DESC, ctkh.gioKham ASC`,
         [idBacsi],
         (err, scheduleResults) => {
           if (err) return res.status(500).json({ message: 'Lỗi khi lấy lịch trình' });
@@ -463,7 +464,7 @@ router.get('/staff-schedules/pending', verifyDoctor, (req, res) => {
          LEFT JOIN NhanVienPhongKham nv ON lt.idLichtrinh = nv.idLichtrinh
          LEFT JOIN NguoiDung nd ON nv.idNguoidung = nd.idNguoidung
          WHERE lt.idBacsi = ? AND lt.trangThai = 0
-         ORDER BY lt.ngay ASC, ctkh.gioKham ASC`,
+         ORDER BY lt.ngay DESC, ctkh.gioKham ASC`,
         [idBacsi],
         (err, scheduleResults) => {
           if (err) return res.status(500).json({ message: 'Lỗi khi lấy lịch trình chờ duyệt' });
@@ -546,6 +547,58 @@ router.put('/staff-schedules/approve', verifyDoctor, (req, res) => {
   );
 });
 
+// Cập nhật route hủy lịch trình
+router.put('/staff-schedules/cancel', verifyDoctor, (req, res) => {
+  const { token } = req.query;
+  const { idLichtrinh } = req.body;
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Không tìm thấy token xác thực' });
+  }
+
+  if (!idLichtrinh) {
+    return res.status(400).json({ message: 'Vui lòng cung cấp ID lịch trình' });
+  }
+
+  const doctorId = req.user.id;
+
+  // Kiểm tra xem lịch trình có slot nào đã được đặt không
+  db.query(
+    `SELECT lt.idLichtrinh, COUNT(ctkh.idKhunggio) as bookedSlots
+     FROM LichTrinh lt
+     INNER JOIN BacSi bs ON lt.idBacsi = bs.idBacsi
+     LEFT JOIN ChiTietKhungGio ctkh ON lt.idLichtrinh = ctkh.idLichtrinh
+     WHERE bs.idNguoidung = ? 
+     AND lt.idLichtrinh = ? 
+     AND lt.trangThai IN (0, 1)
+     AND ctkh.trangThai = 1
+     GROUP BY lt.idLichtrinh`,
+    [doctorId, idLichtrinh],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: 'Lỗi truy vấn' });
+      
+      if (results.length > 0 && results[0].bookedSlots > 0) {
+        return res.status(400).json({ 
+          message: 'Không thể hủy lịch trình đã có người đặt lịch khám' 
+        });
+      }
+
+      // Nếu không có slot nào được đặt, tiến hành hủy lịch trình
+      db.query(
+        'UPDATE LichTrinh SET trangThai = 2 WHERE idLichtrinh = ?',
+        [idLichtrinh],
+        (err) => {
+          if (err) return res.status(500).json({ message: 'Lỗi khi hủy lịch trình' });
+
+          res.json({ 
+            message: 'Hủy lịch trình thành công',
+            idLichtrinh: idLichtrinh
+          });
+        }
+      );
+    }
+  );
+});
 
 router.get('/appointments', verifyDoctor, (req, res) => {
   const doctorId = req.user.id;
@@ -581,7 +634,6 @@ router.get('/appointments', verifyDoctor, (req, res) => {
         // Trong file doctor.js
         
         const appointments = appointmentResults.map(apt => {
-          console.log('Raw date from DB:', apt.ngay); // Log để kiểm tra
           let trangThaiText;
   switch(apt.trangThai) {
     case 0:
@@ -616,4 +668,58 @@ router.get('/appointments', verifyDoctor, (req, res) => {
   );
 });
 
+//hủy lịch hẹn
+// Add this route in doctor.js
+router.put('/appointments/cancel', verifyDoctor, (req, res) => {
+  const { idLichhen } = req.body;
+  
+  if (!idLichhen) {
+    return res.status(400).json({ message: 'Vui lòng cung cấp ID lịch hẹn' });
+  }
+
+  const doctorId = req.user.id;
+
+  // Verify doctor owns this appointment
+  db.query(
+    `SELECT lh.idLichhen 
+     FROM LichHenKham lh
+     INNER JOIN BacSi bs ON lh.idBacsi = bs.idBacsi
+     WHERE bs.idNguoidung = ? AND lh.idLichhen = ? AND lh.trangThai = 0`,
+    [doctorId, idLichhen],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: 'Lỗi truy vấn' });
+      if (results.length === 0) {
+        return res.status(403).json({ 
+          message: 'Không thể hủy lịch hẹn này hoặc lịch hẹn không tồn tại/đã được xử lý' 
+        });
+      }
+
+      // Update appointment status to cancelled (3)
+      db.query(
+        'UPDATE LichHenKham SET trangThai = 3 WHERE idLichhen = ?',
+        [idLichhen],
+        (err) => {
+          if (err) return res.status(500).json({ message: 'Lỗi khi hủy lịch hẹn' });
+
+          // Free up the time slot
+          db.query(
+            `UPDATE ChiTietKhungGio ctkh
+             INNER JOIN LichHenKham lh ON ctkh.idKhunggio = lh.idKhunggio
+             SET ctkh.trangThai = 0
+             WHERE lh.idLichhen = ?`,
+            [idLichhen],
+            (err) => {
+              if (err) return res.status(500).json({ message: 'Lỗi khi cập nhật trạng thái khung giờ' });
+
+              res.json({ 
+                message: 'Hủy lịch hẹn thành công',
+                idLichhen: idLichhen
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
 module.exports = router;

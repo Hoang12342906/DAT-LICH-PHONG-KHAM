@@ -27,7 +27,7 @@ router.get('/profile', verifyStaff, (req, res) => {
                     res.json({
                         hoTen: user.hoTen,
                         email: user.email,
-                        hinhAnh: '/default-avatar.png'
+                        hinhAnh: './img/default_avatar.jpg'
                     });
                 }
             } else {
@@ -307,29 +307,32 @@ const checkStaffPermission = (staffId, doctorId) => {
   });
 
   // API lấy danh sách lịch hẹn của bác sĩ được phân công
-router.get('/appointments', verifyStaff, (req, res) => {
-  const staffId = req.user.id;
-  
-  const query = `
-    SELECT DISTINCT 
-      lh.*,
-      nd.hoTen as tenBacsi
-    FROM LichHenKham lh
-    JOIN BacSi b ON lh.idBacsi = b.idBacsi
-    JOIN NguoiDung nd ON b.idNguoidung = nd.idNguoidung
-    JOIN NhanVienPhongKham nv ON lh.idBacsi = nv.idBacsi
-    WHERE nv.idNguoidung = ?
-    ORDER BY lh.thoiGiandatlich DESC
-  `;
-  
-  db.query(query, [staffId], (err, results) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ message: 'Lỗi server khi lấy danh sách lịch hẹn' });
-    }
-    res.json(results);
+  router.get('/appointments', verifyStaff, (req, res) => {
+    const staffId = req.user.id;
+    
+    const query = `
+      SELECT DISTINCT 
+        lh.*,
+        nd.hoTen as tenBacsi,
+        CONCAT(lt.ngay, ' ', ckg.gioKham) as gioKham
+      FROM LichHenKham lh
+      JOIN BacSi b ON lh.idBacsi = b.idBacsi
+      JOIN NguoiDung nd ON b.idNguoidung = nd.idNguoidung
+      JOIN NhanVienPhongKham nv ON lh.idBacsi = nv.idBacsi
+      JOIN LichTrinh lt ON lh.idLichtrinh = lt.idLichtrinh
+      JOIN ChiTietKhungGio ckg ON lh.idKhunggio = ckg.idKhunggio
+      WHERE nv.idNguoidung = ?
+      ORDER BY lt.ngay DESC, ckg.gioKham ASC
+    `;
+    
+    db.query(query, [staffId], (err, results) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ message: 'Lỗi server khi lấy danh sách lịch hẹn' });
+      }
+      res.json(results);
+    });
   });
-});
 
   // API cập nhật trạng thái khám bệnh
   router.put('/update-appointment-status/:idLichhen', verifyStaff, async (req, res) => {

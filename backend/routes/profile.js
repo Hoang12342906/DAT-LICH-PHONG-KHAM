@@ -25,7 +25,7 @@ router.get('/profile', (req, res) => {
             const base64Image = user.hinhAnh.toString('base64');
             user.hinhAnh = `data:image/png;base64,${base64Image}`;
           } else {
-            user.hinhAnh = '/default-avatar.png';
+            user.hinhAnh = './img/default_avatar.jpg';
           }
   
           // Chuyển đổi gioiTinh từ Buffer (kiểu BIT) sang số
@@ -144,4 +144,86 @@ router.put('/profile', upload.single('hinhAnh'), (req, res) => {
     }
   });
   
+  // Thêm route sau vào profile.js
+router.put('/doctor/update-price', (req, res) => {
+  const userId = req.user.id;
+  const { giaKham } = req.body;
+
+  // Validate giá khám
+  if (!giaKham || isNaN(giaKham)) {
+    return res.status(400).json({ message: 'Giá khám không hợp lệ' });
+  }
+
+  // Trước tiên lấy idBacsi từ bảng BacSi
+  db.query(
+    'SELECT idBacsi FROM BacSi WHERE idNguoidung = ?',
+    [userId],
+    (err, results) => {
+      if (err) {
+        console.error('Lỗi khi tìm thông tin bác sĩ:', err);
+        return res.status(500).json({ message: 'Lỗi hệ thống' });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ message: 'Không tìm thấy thông tin bác sĩ' });
+      }
+
+      const idBacsi = results[0].idBacsi;
+
+      // Cập nhật giá khám trong bảng BacSi
+      db.query(
+        'UPDATE BacSi SET giaKham = ? WHERE idBacsi = ?',
+        [giaKham, idBacsi],
+        (updateErr, updateResult) => {
+          if (updateErr) {
+            console.error('Lỗi khi cập nhật giá khám:', updateErr);
+            return res.status(500).json({ message: 'Lỗi khi cập nhật giá khám' });
+          }
+
+          if (updateResult.affectedRows === 0) {
+            return res.status(404).json({ message: 'Không tìm thấy bác sĩ để cập nhật' });
+          }
+
+          // Lấy thông tin đã cập nhật
+          db.query(
+            'SELECT giaKham FROM BacSi WHERE idBacsi = ?',
+            [idBacsi],
+            (getErr, getResults) => {
+              if (getErr) {
+                return res.status(500).json({ message: 'Lỗi khi lấy thông tin cập nhật' });
+              }
+
+              res.json({
+                message: 'Cập nhật giá khám thành công',
+                giaKham: getResults[0].giaKham
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Thêm route để lấy thông tin giá khám của bác sĩ
+router.get('/doctor/info', (req, res) => {
+  const userId = req.user.id;
+
+  db.query(
+    'SELECT BacSi.* FROM BacSi WHERE BacSi.idNguoidung = ?',
+    [userId],
+    (err, results) => {
+      if (err) {
+        console.error('Lỗi khi lấy thông tin bác sĩ:', err);
+        return res.status(500).json({ message: 'Lỗi hệ thống' });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ message: 'Không tìm thấy thông tin bác sĩ' });
+      }
+
+      res.json(results[0]);
+    }
+  );
+});
 module.exports = router;

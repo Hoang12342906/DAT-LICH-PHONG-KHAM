@@ -49,8 +49,6 @@ router.get('/users', verifyAdmin, (req, res) => {
     const processedResults = results.map(user => {
       if (user.hinhAnh) {
         user.hinhAnh = user.hinhAnh.toString('base64');
-      }else{
-        user.hinhAnh = 'https://static.vecteezy.com/system/resources/thumbnails/009/292/244/small/default-avatar-icon-of-social-media-user-vector.jpg';
       }
       return user;
     });
@@ -405,6 +403,7 @@ router.get('/phongkham', verifyAdmin, (req, res) => {
     LEFT JOIN NguoiDung n ON p.idAdmin = n.idNguoidung
     LEFT JOIN ChuyenKhoa ck ON p.idChuyenkhoa = ck.idChuyenkhoa
     WHERE 1=1
+    ORDER BY p.idPhongkham DESC
   `;
   
   let queryParams = [];

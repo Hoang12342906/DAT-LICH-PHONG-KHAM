@@ -39,19 +39,7 @@ router.get('/user', verifyPatient, (req, res) => {
     );
   });
 
-  // Lấy danh sách chuyên khoa
-  router.get('/chuyenkhoa', verifyPatient, (req, res) => {
-    db.query('SELECT idChuyenkhoa, ten, hinhAnh FROM ChuyenKhoa LIMIT 12', (err, results) => {
-      if (err) return res.status(500).json({ message: 'Lỗi truy vấn cơ sở dữ liệu', error: err });
-  
-      const chuyenkhoa = results.map(item => ({
-        idChuyenkhoa: item.idChuyenkhoa,
-        ten: item.ten,
-        hinhAnh: item.hinhAnh ? `data:image/png;base64,${item.hinhAnh.toString('base64')}` : null,
-      }));
-      res.json(chuyenkhoa);
-    });
-  });
+
   
   // Lấy danh sách phòng khám nổi bật
   router.get('/phongkham/noibat', verifyPatient, (req, res) => {
@@ -77,7 +65,7 @@ router.get('/user', verifyPatient, (req, res) => {
       JOIN NguoiDung ON BacSi.idNguoidung = NguoiDung.idNguoidung
       WHERE NguoiDung.idVaiTro = 'bacsi'
       AND NguoiDung.isLocked = 0
-      LIMIT 8
+      LIMIT 4
     `, (err, results) => {
       if (err) return res.status(500).json({ message: 'Lỗi truy vấn cơ sở dữ liệu', error: err });
   
@@ -324,7 +312,7 @@ router.post('/datlich', verifyPatient, async (req, res) => {
 
 //booking
 // Get list of departments
-router.get('/chuyenkhoa', verifyPatient, (req, res) => {
+router.get('/chuyenkhoa2', verifyPatient, (req, res) => {
   db.query(
     'SELECT idChuyenkhoa, ten FROM ChuyenKhoa',
     (err, results) => {
@@ -352,7 +340,7 @@ router.get('/bacsi/chuyenkhoa/:id', verifyPatient, (req, res) => {
 });
 
 // Get doctor's schedule
-router.get('/bacsi/:id/lichkham', verifyPatient, (req, res) => {
+router.get('/bacsi/:id/lichkham2', verifyPatient, (req, res) => {
   const doctorId = req.params.id;
   const today = moment().format('YYYY-MM-DD');
   
@@ -394,65 +382,67 @@ router.get('/bacsi/:id/lichkham', verifyPatient, (req, res) => {
 });
 
 // Book appointment
-router.post('/datlich', verifyPatient, async (req, res) => {
-  const {
-    idBacsi, idLichtrinh, idKhunggio, idPhongkham,
-    lyDokham, tenBenhnhan, SDTBenhnhan, diaChiBenhnhan,
-    ngaySinhBenhnhan, gioiTinhBenhnhan
-  } = req.body;
+// Remove duplicate route and merge logic
+// router.post('/datlich', verifyPatient, async (req, res) => {
+//   const {
+//     idBacsi, idLichtrinh, idKhunggio, idPhongkham,
+//     lyDokham, tenBenhnhan, SDTBenhnhan, diaChiBenhnhan,
+//     ngaySinhBenhnhan, gioiTinhBenhnhan
+//   } = req.body;
 
-  const conn = await db.promise().getConnection();
+//   const conn = await db.promise().getConnection();
   
-  try {
-    await conn.beginTransaction();
+//   try {
+//     await conn.beginTransaction();
 
-    // Verify time slot availability
-    const [slots] = await conn.query(
-      'SELECT trangThai FROM ChiTietKhungGio WHERE idKhunggio = ? FOR UPDATE',
-      [idKhunggio]
-    );
+//     // Verify khung gio belongs to the correct lich trinh
+//     const [slots] = await conn.query(
+//       'SELECT ctkg.trangThai FROM ChiTietKhungGio ctkg ' +
+//       'WHERE ctkg.idKhunggio = ? AND ctkg.idLichtrinh = ?', 
+//       [idKhunggio, idLichtrinh]
+//     );
 
-    if (!slots.length || slots[0].trangThai !== 0) {
-      throw new Error('Khung giờ không còn trống');
-    }
+//     if (!slots.length) {
+//       throw new Error('Khung giờ không hợp lệ cho lịch trình này');
+//     }
 
-    // Create appointment
-    const [result] = await conn.query(
-      `INSERT INTO LichHenKham (
-        idBacsi, idBenhnhan, idLichtrinh, idKhunggio, idPhongkham,
-        thoiGiandatlich, lyDokham, tenBenhnhan, SDTBenhnhan,
-        diaChiBenhnhan, ngaySinhBenhnhan, gioiTinhBenhnhan, trangThai
-      ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, 0)`,
-      [
-        idBacsi, req.user.id, idLichtrinh, idKhunggio, idPhongkham,
-        lyDokham, tenBenhnhan, SDTBenhnhan, diaChiBenhnhan,
-        ngaySinhBenhnhan, gioiTinhBenhnhan
-      ]
-    );
+//     if (slots[0].trangThai !== 0) {
+//       throw new Error('Khung giờ đã được đặt');
+//     }
 
-    // Update time slot status
-    await conn.query(
-      'UPDATE ChiTietKhungGio SET trangThai = 1 WHERE idKhunggio = ?',
-      [idKhunggio]
-    );
+//     // Create appointment with validated data
+//     const [result] = await conn.query(
+//       `INSERT INTO LichHenKham (
+//         idBacsi, idBenhnhan, idLichtrinh, idKhunggio, idPhongkham,
+//         thoiGiandatlich, lyDokham, tenBenhnhan, SDTBenhnhan,
+//         diaChiBenhnhan, ngaySinhBenhnhan, gioiTinhBenhnhan, trangThai
+//       ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, 0)`,
+//       [idBacsi, req.user.id, idLichtrinh, idKhunggio, idPhongkham,
+//        lyDokham, tenBenhnhan, SDTBenhnhan, diaChiBenhnhan,
+//        ngaySinhBenhnhan, gioiTinhBenhnhan]
+//     );
 
-    await conn.commit();
-    res.status(201).json({
-      message: 'Đặt lịch thành công',
-      idLichhen: result.insertId
-    });
+//     // Update slot status
+//     await conn.query(
+//       'UPDATE ChiTietKhungGio SET trangThai = 1 WHERE idKhunggio = ?',
+//       [idKhunggio]
+//     );
 
-  } catch (error) {
-    await conn.rollback();
-    res.status(400).json({
-      message: error.message || 'Lỗi khi đặt lịch',
-      error: error
-    });
-  } finally {
-    conn.release();
-  }
-});
+//     await conn.commit();
+//     res.status(201).json({
+//       message: 'Đặt lịch thành công',
+//       idLichhen: result.insertId
+//     });
 
+//   } catch (error) {
+//     await conn.rollback();
+//     res.status(400).json({
+//       message: error.message || 'Lỗi khi đặt lịch'
+//     });
+//   } finally {
+//     conn.release();
+//   }
+// });
 
 // Lấy lịch sử đặt lịch khám
 router.get('/lichhen', verifyPatient, (req, res) => {
@@ -520,6 +510,95 @@ router.get('/lichsukham', verifyPatient, (req, res) => {
     }
     res.json(results);
   });
+});
+
+// Cancel appointment
+router.put('/lichhen/:id/cancel', verifyPatient, (req, res) => {
+  const appointmentId = req.params.id;
+  const userId = req.user.id;
+
+  // First check if appointment exists and belongs to patient
+  db.query(
+    'SELECT idKhunggio, trangThai FROM LichHenKham WHERE idLichhen = ? AND idBenhnhan = ?',
+    [appointmentId, userId],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ 
+          message: 'Lỗi khi kiểm tra lịch hẹn',
+          error: err 
+        });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ 
+          message: 'Lịch hẹn không tồn tại hoặc không thuộc về bạn' 
+        });
+      }
+
+      const appointment = results[0];
+      
+      if (appointment.trangThai !== 0) {
+        return res.status(400).json({ 
+          message: 'Chỉ có thể hủy lịch hẹn ở trạng thái chờ khám' 
+        });
+      }
+
+      // Begin transaction
+      db.beginTransaction(err => {
+        if (err) {
+          return res.status(500).json({ 
+            message: 'Lỗi khi bắt đầu giao dịch',
+            error: err 
+          });
+        }
+
+        // Update appointment status to cancelled (3)
+        db.query(
+          'UPDATE LichHenKham SET trangThai = 3 WHERE idLichhen = ?',
+          [appointmentId],
+          (err) => {
+            if (err) {
+              return db.rollback(() => {
+                res.status(500).json({ 
+                  message: 'Lỗi khi cập nhật trạng thái lịch hẹn',
+                  error: err 
+                });
+              });
+            }
+
+            // Free up the time slot
+            db.query(
+              'UPDATE ChiTietKhungGio SET trangThai = 0 WHERE idKhunggio = ?',
+              [appointment.idKhunggio],
+              (err) => {
+                if (err) {
+                  return db.rollback(() => {
+                    res.status(500).json({ 
+                      message: 'Lỗi khi cập nhật khung giờ',
+                      error: err 
+                    });
+                  });
+                }
+
+                // Commit transaction
+                db.commit(err => {
+                  if (err) {
+                    return db.rollback(() => {
+                      res.status(500).json({ 
+                        message: 'Lỗi khi hoàn tất giao dịch',
+                        error: err 
+                      });
+                    });
+                  }
+                  res.json({ message: 'Hủy lịch hẹn thành công' });
+                });
+              }
+            );
+          }
+        );
+      });
+    }
+  );
 });
 
 module.exports = router;
